@@ -1,0 +1,151 @@
+---
+title: "Assignment_4"
+author: "Vishnu Prasanth Reddy Patur"
+date: "9/25/2019"
+---
+
+
+#### Loading Dataset
+```{r message=FALSE, message=FALSE,warning=FALSE}
+
+library(dplyr)
+library(knitr)
+setwd('C:/Users/vipra/Desktop/MSDA/STA6714_Data_Preperation/Assignments/Ass_4')
+data_set<-read.csv('Malware_train_s.csv')
+
+```
+
+
+#### Cleaning dataset
+```{r }
+#Data CLeaning
+data_set$Census_ChassisTypeName<-as.character(data_set$Census_ChassisTypeName)
+data_set$Census_ChassisTypeName[data_set$Census_ChassisTypeName==""]<-'Missing'
+data_set$Census_ChassisTypeName[data_set$Census_ChassisTypeName=='UNKNOWN']<-'Unknown'
+data_set$Census_ChassisTypeName<-as.factor(data_set$Census_ChassisTypeName)
+
+
+data_set$Census_FirmwareManufacturerIdentifier<-as.character(data_set$Census_FirmwareManufacturerIdentifier)
+data_set$Census_FirmwareManufacturerIdentifier[data_set$Census_FirmwareManufacturerIdentifier=='.']<-'Unknown'
+data_set$Census_FirmwareManufacturerIdentifier<-as.factor(data_set$Census_FirmwareManufacturerIdentifier)
+
+data_set1<-subset(data_set,select = c('AppVersion','Census_ActivationChannel','Census_ChassisTypeName','Census_DeviceFamily','Census_FirmwareManufacturerIdentifier'))
+```
+
+
+
+
+#### Function for producing SMOOTH LOGIT TABL, input- Dataset, Target Variable, Treshold, CategoricalVariable and Smoothing Factor
+```{r }
+#Function
+smoothed_function<-function(dataset,target_variable,treshold,CategoricalVariable,smoothfactor){
+a<-table(dataset[CategoricalVariable])
+a<-as.data.frame(a)
+
+yes<-subset(dataset,dataset[target_variable]==1)
+no<-subset(dataset,dataset[target_variable]==0)
+
+a_yes<-table(yes[CategoricalVariable])
+a_yes<-as.data.frame(a_yes)
+
+a$YES_freq<-a_yes$Freq
+a$NO_freq<-a$Freq-a$YES
+
+if (treshold>0){
+  a1<-subset(a,a$Freq>=treshold)
+  f_no=nrow(a)-nrow(a1)
+  a<-a[order(a$Freq),]
+  sum_f<-sum(a$Freq[1:f_no])
+  sum_y<-sum(a$YES_freq[1:f_no])
+  sum_n<-sum(a$NO_freq[1:f_no])
+  new<-data.frame(Var1='New Category',Freq=sum_f,YES_freq=sum_y,NO_freq=sum_n)
+  a<-rbind(a1,new)
+}
+a$Prop_yes=a$YES/a$Freq
+a$prop_no=1-a$Prop_yes
+
+a$smoot_logit <-log((a$YES_freq+a$Prop_yes*smoothfactor)/(a$NO_freq+a$prop_no*smoothfactor))
+return(a)
+}
+
+
+```
+
+
+
+
+**SmoothLogit for `AppVersion` treshold=35, smoothing factor=50**
+```{r }
+
+appversion_smoothed<-smoothed_function(data_set,'HasDetections',35,'AppVersion',50)
+kable(appversion_smoothed)
+
+```
+
+
+**SmoothLogit for `Census_ChassisTypeName` treshold=70, smoothingfactor=100**
+```{r }
+
+Census_ChassisTypeName_smothed<-smoothed_function(data_set,'HasDetections',70,'Census_ChassisTypeName',100)
+
+kable(Census_ChassisTypeName_smothed)
+
+```
+
+
+
+**SmoothLogit for `Census_ActivationChannel` treshold=0, smoothingfactor=100**
+```{r }
+
+Census_ActivationChannel_smothed<-smoothed_function(data_set,'HasDetections',0,'Census_ActivationChannel',100)
+kable(Census_ActivationChannel_smothed)
+
+```
+
+
+**SmoothLogit for `Census_DeviceFamily` treshold=0, smoothingfactor=100**
+
+```{r }
+
+Census_DeviceFamily_smothed<-smoothed_function(data_set,'HasDetections',0,'Census_DeviceFamily',100)
+kable(Census_DeviceFamily_smothed)
+```
+
+
+**SmoothLogit for `Census_FirmwareManufacturerIdentifier` treshold=700, smoothingfactor=50**
+```{r }
+
+Census_FirmwareManufacturerIdentifier_smothed<-smoothed_function(data_set,'HasDetections',0,'Census_FirmwareManufacturerIdentifier',50)
+
+kable(head(Census_FirmwareManufacturerIdentifier_smothed,70))
+
+
+```
+
+
+# 50 bservations of input dataset with smooth logit
+```{r}
+#appending smoothed logit to input dataset provided treshold
+appversion_smoothed$smoothAppversion<-appversion_smoothed$smoot_logit
+Census_ChassisTypeName_smothed$smoothcensusChasistyp<-Census_ChassisTypeName_smothed$smoot_logit
+Census_ActivationChannel_smothed$SmoothACTVTCHNL<-Census_ActivationChannel_smothed$smoot_logit
+Census_DeviceFamily_smothed$smoothDeviceFmly<-Census_DeviceFamily_smothed$smoot_logit
+Census_FirmwareManufacturerIdentifier_smothed$smoothfirmware<-Census_FirmwareManufacturerIdentifier_smothed$smoot_logit
+
+smoothed_data_set<- merge(data_set1,subset(appversion_smoothed,select = c('Var1','smoothAppversion')),by.x = 'AppVersion',by.y = 'Var1',all.x = TRUE)
+
+smoothed_data_set<- merge(smoothed_data_set,subset(Census_ChassisTypeName_smothed,select = c('Var1','smoothcensusChasistyp')),by.x = 'Census_ChassisTypeName',by.y = 'Var1',all.x = TRUE)
+
+smoothed_data_set<- merge(smoothed_data_set,subset(Census_ActivationChannel_smothed,select = c('Var1','SmoothACTVTCHNL')),by.x = 'Census_ActivationChannel',by.y = 'Var1',all.x = TRUE)
+
+
+smoothed_data_set<- merge(smoothed_data_set,subset(Census_DeviceFamily_smothed,select = c('Var1','smoothDeviceFmly')),by.x = 'Census_DeviceFamily',by.y = 'Var1',all.x = TRUE)
+
+smoothed_data_set<- merge(smoothed_data_set,subset(Census_FirmwareManufacturerIdentifier_smothed,select = c('Var1','smoothfirmware')),by.x = 'Census_FirmwareManufacturerIdentifier',by.y = 'Var1',all.x = TRUE)
+
+
+
+kable(head(smoothed_data_set,50))
+
+```
+
